@@ -1,12 +1,63 @@
 # Fantasma x Pessoa (Jack / nand2tetris)
 
-Jogo para dois jogadores no mesmo teclado, escrito em Jack (nand2tetris, Projeto 6 — UFRPE).
+Jogo para dois jogadores no mesmo teclado, escrito em **Jack** para o computador Hack do nand2tetris (Projeto 6 — UFRPE).
 
-- **Fantasma** (Jogador 1): setas, `.` para parar.
-- **Pessoa** (Jogador 2): W/A/S/D, `E` para parar.
-- A Pessoa tem 3 s de vantagem, depois 20 s de perseguição num labirinto aleatório. **Esc** sai.
+O **Fantasma** persegue a **Pessoa** num labirinto aleatório. A Pessoa tem **3 s de vantagem**, depois são **20 s de perseguição**:
 
-## Como rodar
-Abra a pasta (ou `_teste_web_ide/GhostAll.vm`) no VM Emulator / Web IDE do nand2tetris.
+- se o Fantasma pegar a Pessoa → o Jogador 2 perde;
+- se o tempo acabar → o Jogador 1 perde.
 
-Detalhes de implementação e perguntas de estudo: [ESTUDO.md](ESTUDO.md).
+Depois de ~3 s uma nova rodada começa sozinha, com outro labirinto.
+
+## Controles
+
+| Jogador | Personagem | Mover | Parar |
+|---|---|---|---|
+| Jogador 1 | Fantasma | setas ↑ ↓ ← → | `.` |
+| Jogador 2 | Pessoa | `W` `A` `S` `D` | `E` |
+
+- Basta **um toque**: o boneco continua andando na direção escolhida até bater numa parede ou você mandar parar (o Hack só lê uma tecla por vez, então segurar não funciona para dois jogadores).
+- Na tela inicial, aperte qualquer tecla para começar.
+- **Esc** sai do jogo a qualquer momento.
+
+## Arquivos
+
+| Arquivo | Conteúdo |
+|---|---|
+| `Main.jack` | Ponto de entrada |
+| `GhostGame.jack` | Laço principal, rodadas, teclado, captura, relógios |
+| `Maze.jack` | Labirinto aleatório |
+| `Ghost.jack` / `Person.jack` | Os dois personagens |
+| `Hud.jack` | Textos da tela (relógios, tela inicial, Game Over) |
+| `Random.jack` | Gerador de números aleatórios |
+| `ESTUDO.md` | Explicação detalhada do código e perguntas de estudo |
+
+Os arquivos `.vm` **não ficam no repositório**: eles são gerados ao compilar (passo 1 abaixo).
+
+## Como rodar no nand2tetris
+
+O jogo precisa de duas etapas: **compilar** os `.jack` (gerando `.vm`) e **executar** os `.vm` no **VM Emulator**.
+
+### Opção A — Web IDE (no navegador)
+
+1. Baixe este repositório (**Code → Download ZIP**) e extraia numa pasta.
+2. Abra o Web IDE do nand2tetris: <https://nand2tetris.github.io/web-ide>
+3. Vá para a ferramenta **Jack Compiler**, abra a pasta com os 7 arquivos `.jack` e compile. Devem sair **0 erros** e 7 arquivos `.vm`.
+4. Vá para o **VM Emulator** e carregue a pasta compilada (todos os `.vm` juntos — o programa começa em `Main.main`).
+5. Clique na tela do emulador para ela receber o teclado e aperte **Run** (▶).
+6. Aumente a velocidade de execução ao máximo; em velocidade baixa o jogo fica muito lento.
+
+### Opção B — Ferramentas de desktop (nand2tetris Software Suite)
+
+1. Baixe o *Software Suite* em <https://www.nand2tetris.org/software> (precisa de Java instalado).
+2. Compile a pasta do projeto:
+   - Windows: `tools\JackCompiler.bat "caminho\da\pasta"`
+   - Linux/macOS: `tools/JackCompiler.sh caminho/da/pasta`
+3. Abra o VM Emulator (`tools\VMEmulator.bat` ou `tools/VMEmulator.sh`) e use **File → Load Program** para carregar a **pasta** (não um arquivo só).
+4. Em **Animate**, escolha **No animation** e coloque a velocidade no máximo.
+5. Aperte **Run** (▶) e clique na área da tela/teclado do emulador para os comandos chegarem ao jogo.
+
+## Observações
+
+- **Os segundos são aproximados.** O Jack não tem relógio; o jogo conta "ticks" com `Sys.wait`, e a velocidade varia conforme o computador e o emulador. Se o relógio estiver rápido ou lento demais, ajuste `TICK_MS` no construtor de `GhostGame.jack` e recompile.
+- Outros valores de ajuste (duração da perseguição, velocidade dos bonecos, % de laços no labirinto etc.) também ficam no construtor de `GhostGame` — veja a seção "Valores de ajuste" do [ESTUDO.md](ESTUDO.md).
