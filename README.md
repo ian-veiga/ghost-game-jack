@@ -46,8 +46,8 @@ O jogo precisa de duas etapas: **compilar** os `.jack` (gerando `.vm`) e **execu
 2. Abra o Web IDE do nand2tetris: <https://nand2tetris.github.io/web-ide>
 3. Vá para a ferramenta **Jack Compiler**, abra a pasta com os 7 arquivos `.jack` e compile. Devem sair **0 erros** e 7 arquivos `.vm`.
 4. Vá para o **VM Emulator** e carregue a pasta compilada (todos os `.vm` juntos — o programa começa em `Main.main`).
-5. Clique na tela do emulador para ela receber o teclado e aperte **Run** (▶).
-6. **Coloque o emulador no modo _fast_** (velocidade máxima). Sem isso o jogo fica lento demais.
+5. **Coloque o emulador no modo _fast_** (velocidade máxima). Sem isso o jogo fica lento demais.
+6. Aperte **Run** (▶) e clique na tela do emulador para ela receber o teclado.
 
 ### Opção B — Ferramentas de desktop (nand2tetris Software Suite)
 
