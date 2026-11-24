@@ -1,0 +1,22 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/09/Square/Main.jack
+//
+// ADAPTADO:
+//  - Apenas os comentarios mudaram. O codigo e o mesmo do original.
+
+/**
+ * Ponto de entrada do programa.
+ * Cria o jogo (GhostGame), roda o jogo ate o jogador apertar Esc
+ * e depois libera a memoria.
+ */
+class Main {
+    function void main() {
+        var GhostGame game;
+        let game = GhostGame.new();
+        do game.run();
+        do game.dispose();
+        return;
+    }
+}

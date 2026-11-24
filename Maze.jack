@@ -1,0 +1,222 @@
+/**
+ * Maze (NOVO): o labirinto aleatorio.
+ *
+ * A tela tem 32 colunas x 16 linhas de celulas de 16x16 pixels.
+ * A linha 0 e o HUD (so texto); o labirinto ocupa as linhas 1 a 15.
+ * O labirinto e guardado num Array de 512 posicoes:
+ *   indice = (linha * 32) + coluna,   1 = parede,  0 = livre.
+ *
+ * Geracao: algoritmo "Binary Tree" + "braiding" (criar lacos).
+ *  - Usamos coordenadas locais do labirinto: lc = coluna (0..31) e
+ *    lr = linha - 1 (0..14).
+ *  - "Salas" sao as celulas com lc e lr impares (15 x 7 salas).
+ *  - Cada sala abre a parede ao NORTE ou ao LESTE (sorteado). A primeira
+ *    linha de salas so pode ir para o leste, a ultima coluna so pode ir
+ *    para o norte, e a sala do canto superior direito nao abre nada.
+ *  - GARANTIA DE CONEXAO: seguindo norte/leste, toda sala chega na sala do
+ *    canto superior direito. Logo, TODAS as celulas livres estao ligadas,
+ *    e qualquer celula livre serve de spawn. O braiding so ABRE paredes,
+ *    nunca fecha, entao a garantia continua valendo.
+ *  - Braiding: um labirinto "arvore" tem um so caminho entre dois pontos,
+ *    e o Fantasma sempre encurralaria a Pessoa. Por isso abrimos algumas
+ *    paredes extras (BRAID_PERCENT %) para criar lacos e rotas de fuga.
+ *
+ * MEMORIA: o Maze e criado UMA VEZ SO (no construtor do GhostGame) e o
+ * Array de 512 vive o jogo todo. Cada rodada so chama generate(), que
+ * reescreve o mesmo Array. Antes, cada rodada fazia Maze.new + dispose:
+ * as alocacoes pequenas da rodada seguinte caiam no bloco liberado, o
+ * Array novo de 512 nao cabia mais ali e o heap se fragmentava ate dar
+ * "Heap overflow" (erro 6) depois de ~8 rodadas.
+ */
+class Maze {
+    field Array grid;      // 512 celulas: 1 = parede, 0 = livre
+    field Random random;   // gerador compartilhado (quem libera e o GhostGame)
+    field int pickedCol;   // resultado de pickFreeCell()
+    field int pickedRow;   // (o Jack nao devolve dois valores de uma vez)
+
+    /**
+     * Cria o labirinto: so aloca o Array (uma vez por jogo).
+     * O desenho do labirinto em si e feito por generate().
+     */
+    constructor Maze new(Random r) {
+        let random = r;
+        let grid = Array.new(512);
+        return this;
+    }
+
+    /**
+     * Gera um labirinto novo no MESMO Array (nao aloca nada).
+     * Chamado no inicio de cada rodada.
+     */
+    method void generate(int braidPercent) {
+        do fillWithWalls();
+        do openRoomPassages();
+        do braid(braidPercent);
+        return;
+    }
+
+    /** Libera o Array e o proprio objeto (so no fim do jogo). */
+    method void dispose() {
+        do grid.dispose();
+        do Memory.deAlloc(this);
+        return;
+    }
+
+    /** Marca todas as 512 celulas como parede. */
+    method void fillWithWalls() {
+        var int i;
+        let i = 0;
+        while (i < 512) {
+            let grid[i] = 1;
+            let i = i + 1;
+        }
+        return;
+    }
+
+    /** Abre a celula (lc, lr) em coordenadas locais do labirinto. */
+    method void openLocal(int lc, int lr) {
+        let grid[((lr + 1) * 32) + lc] = 0;
+        return;
+    }
+
+    /** Diz se a celula local (lc, lr) esta livre. */
+    method boolean isOpenLocal(int lc, int lr) {
+        return grid[((lr + 1) * 32) + lc] = 0;
+    }
+
+    /** Binary Tree: abre cada sala e uma passagem ao norte ou ao leste. */
+    method void openRoomPassages() {
+        var int lc, lr;
+        let lr = 1;
+        while (lr < 14) {
+            let lc = 1;
+            while (lc < 30) {
+                do openLocal(lc, lr);
+                do openOnePassage(lc, lr);
+                let lc = lc + 2;
+            }
+            let lr = lr + 2;
+        }
+        return;
+    }
+
+    /** Abre a parede ao norte ou ao leste da sala (lc, lr). */
+    method void openOnePassage(int lc, int lr) {
+        var boolean topRow, rightColumn;
+        let topRow = (lr = 1);
+        let rightColumn = (lc = 29);
+        if (topRow & rightColumn) {
+            return;                       // canto superior direito: nada
+        }
+        if (topRow) {
+            do openLocal(lc + 1, lr);     // so pode ir para o leste
+            return;
+        }
+        if (rightColumn) {
+            do openLocal(lc, lr - 1);     // so pode ir para o norte
+            return;
+        }
+        if (random.randRange(1) = 0) {
+            do openLocal(lc, lr - 1);     // norte
+        } else {
+            do openLocal(lc + 1, lr);     // leste
+        }
+        return;
+    }
+
+    /** Braiding: abre algumas paredes internas para criar lacos. */
+    method void braid(int braidPercent) {
+        var int lc, lr;
+        let lr = 1;
+        while (lr < 14) {
+            let lc = 1;
+            while (lc < 30) {
+                if (canBraid(lc, lr)) {
+                    if (random.randRange(99) < braidPercent) {
+                        do openLocal(lc, lr);
+                    }
+                }
+                let lc = lc + 1;
+            }
+            let lr = lr + 1;
+        }
+        return;
+    }
+
+    /**
+     * Uma parede pode ser aberta no braiding se nao e "pilar" (lc e lr pares)
+     * e separa exatamente duas celulas livres (esquerda/direita ou cima/baixo).
+     * O laco de braid() ja evita as bordas (lc 1..29, lr 1..13).
+     */
+    method boolean canBraid(int lc, int lr) {
+        var boolean isPillar, leftRight, upDown;
+        if (isOpenLocal(lc, lr)) {
+            return false;                 // ja esta livre
+        }
+        let isPillar = ((lc & 1) = 0) & ((lr & 1) = 0);
+        if (isPillar) {
+            return false;
+        }
+        let leftRight = isOpenLocal(lc - 1, lr) & isOpenLocal(lc + 1, lr);
+        let upDown = isOpenLocal(lc, lr - 1) & isOpenLocal(lc, lr + 1);
+        return leftRight | upDown;
+    }
+
+    /** Diz se a celula (col, row) da tela e parede. Fora da tela conta como parede. */
+    method boolean isWall(int col, int row) {
+        if ((col < 0) | (col > 31) | (row < 1) | (row > 15)) {
+            return true;
+        }
+        return grid[(row * 32) + col] = 1;
+    }
+
+    /**
+     * Sorteia celulas ate achar uma livre e guarda em pickedCol/pickedRow.
+     * Sempre termina: o labirinto tem mais de 100 celulas livres.
+     */
+    method void pickFreeCell() {
+        let pickedCol = random.randRange(31);
+        let pickedRow = random.randRange(14) + 1;
+        while (isWall(pickedCol, pickedRow)) {
+            let pickedCol = random.randRange(31);
+            let pickedRow = random.randRange(14) + 1;
+        }
+        return;
+    }
+
+    method int getPickedCol() { return pickedCol; }
+    method int getPickedRow() { return pickedRow; }
+
+    /** Desenha todas as paredes (linhas 1 a 15). */
+    method void draw() {
+        var int col, row;
+        let row = 1;
+        while (row < 16) {
+            let col = 0;
+            while (col < 32) {
+                if (isWall(col, row)) {
+                    do drawWallCell(col, row);
+                }
+                let col = col + 1;
+            }
+            let row = row + 1;
+        }
+        return;
+    }
+
+    /**
+     * Pinta uma celula de preto com 16 Memory.poke (uma palavra de 16 bits
+     * por linha de pixels). E bem mais rapido que Screen.drawRectangle.
+     */
+    method void drawWallCell(int col, int row) {
+        var int address, line;
+        let address = 16384 + (row * 512) + col;
+        let line = 0;
+        while (line < 16) {
+            do Memory.poke(address, -1);  // -1 = todos os 16 bits ligados
+            let address = address + 32;   // proxima linha de pixels
+            let line = line + 1;
+        }
+        return;
+    }
+}

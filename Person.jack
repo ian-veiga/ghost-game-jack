@@ -1,0 +1,157 @@
+/**
+ * Person (NOVO): o personagem do Jogador 2 (W/A/S/D).
+ *
+ * Tem EXATAMENTE a mesma interface e as mesmas regras de movimento do
+ * Ghost (mesma velocidade, mesmo "travamento" de direcao); so o desenho
+ * muda. O codigo repetido e proposital: o Jack nao tem heranca, e o
+ * enunciado exige a classe Ghost.jack. Juntar os dois numa classe so com
+ * um "tipo" deixaria o codigo mais dificil de explicar.
+ */
+class Person {
+
+   field int col, row;     // celula atual (coluna 0..31, linha 1..15)
+   field int direction;    // 0=parado, 1=cima, 2=baixo, 3=esquerda, 4=direita
+
+   /**
+    * Cria a pessoa (uma vez por jogo). Nao desenha nada: a posicao de
+    * verdade vem de reset(), chamado no inicio de cada rodada.
+    */
+   constructor Person new() {
+      let col = 1;
+      let row = 1;
+      let direction = 0;
+      return this;
+   }
+
+   /**
+    * Recoloca a pessoa na celula (Acol, Arow), parado, e desenha.
+    * Chamado no inicio de cada rodada: o objeto e criado uma vez so e
+    * reaproveitado (nada e alocado por rodada).
+    */
+   method void reset(int Acol, int Arow) {
+      let col = Acol;
+      let row = Arow;
+      let direction = 0;
+      do draw();
+      return;
+   }
+
+   /** Libera a memoria do objeto (so no fim do jogo). */
+   method void dispose() {
+      do Memory.deAlloc(this);
+      return;
+   }
+
+   method int getCol() { return col; }
+   method int getRow() { return row; }
+
+   /** Define a direcao (fica valendo ate bater numa parede). */
+   method void setDirection(int d) {
+      let direction = d;
+      return;
+   }
+
+   /** Para o movimento. */
+   method void stop() {
+      let direction = 0;
+      return;
+   }
+
+   /** Anda uma celula na direcao atual (se estiver se movendo). */
+   method void step(Maze maze) {
+      if (direction = 1) { do moveUp(maze); }
+      if (direction = 2) { do moveDown(maze); }
+      if (direction = 3) { do moveLeft(maze); }
+      if (direction = 4) { do moveRight(maze); }
+      return;
+   }
+
+   /** Sobe uma celula; se for parede, para. */
+   method void moveUp(Maze maze) {
+      if (maze.isWall(col, row - 1)) {
+         let direction = 0;
+      } else {
+         do moveTo(col, row - 1);
+      }
+      return;
+   }
+
+   /** Desce uma celula; se for parede, para. */
+   method void moveDown(Maze maze) {
+      if (maze.isWall(col, row + 1)) {
+         let direction = 0;
+      } else {
+         do moveTo(col, row + 1);
+      }
+      return;
+   }
+
+   /** Vai uma celula para a esquerda; se for parede, para. */
+   method void moveLeft(Maze maze) {
+      if (maze.isWall(col - 1, row)) {
+         let direction = 0;
+      } else {
+         do moveTo(col - 1, row);
+      }
+      return;
+   }
+
+   /** Vai uma celula para a direita; se for parede, para. */
+   method void moveRight(Maze maze) {
+      if (maze.isWall(col + 1, row)) {
+         let direction = 0;
+      } else {
+         do moveTo(col + 1, row);
+      }
+      return;
+   }
+
+   /** Apaga na posicao antiga, muda a posicao e desenha na nova. */
+   method void moveTo(int newCol, int newRow) {
+      do erase();
+      let col = newCol;
+      let row = newRow;
+      do draw();
+      return;
+   }
+
+   /** Apaga exatamente as 16 linhas da celula. */
+   method void erase() {
+      var int address, line;
+      let address = 16384 + (row * 512) + col;
+      let line = 0;
+      while (line < 16) {
+         do Memory.poke(address, 0);
+         let address = address + 32;   // proxima linha de pixels
+         let line = line + 1;
+      }
+      return;
+   }
+
+   /**
+    * Desenha um boneco de palito (cabeca cheia, bracos, pernas abertas).
+    * Cada numero e uma linha de 16 pixels; bit 0 = pixel da esquerda.
+    * O desenho e simetrico, entao a ordem dos bits nao muda a figura.
+    */
+   method void draw() {
+      var int a;
+      let a = 16384 + (row * 512) + col;
+      do Memory.poke(a, 960);           // ......####......
+      do Memory.poke(a + 32, 2016);     // .....######.....
+      do Memory.poke(a + 64, 2016);     // .....######.....
+      do Memory.poke(a + 96, 2016);     // .....######.....
+      do Memory.poke(a + 128, 960);     // ......####......
+      do Memory.poke(a + 160, 384);     // .......##.......
+      do Memory.poke(a + 192, 16380);   // ..############..
+      do Memory.poke(a + 224, 16770);   // .#.....##.....#.
+      do Memory.poke(a + 256, 384);     // .......##.......
+      do Memory.poke(a + 288, 384);     // .......##.......
+      do Memory.poke(a + 320, 960);     // ......####......
+      do Memory.poke(a + 352, 1632);    // .....##..##.....
+      do Memory.poke(a + 384, 3120);    // ....##....##....
+      do Memory.poke(a + 416, 6168);    // ...##......##...
+      do Memory.poke(a + 448, 12300);   // ..##........##..
+      do Memory.poke(a + 480, 0);       // ................
+      return;
+   }
+}

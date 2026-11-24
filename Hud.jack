@@ -1,0 +1,117 @@
+/**
+ * Hud (NOVO): todo o texto da tela.
+ *  - Linha 0 (HUD): rotulos e os dois relogios.
+ *  - Tela inicial, mensagens de Game Over centralizadas e mensagem final.
+ *
+ * A tela de texto do Jack tem 23 linhas x 64 colunas (cada letra 8x11 px).
+ * A linha de texto 0 cabe dentro da linha 0 de celulas (16 px), que o
+ * labirinto nunca usa.
+ *
+ * Cuidado com memoria: cada string literal ("...") cria uma String nova
+ * no heap. Por isso todo texto passa por printText, que imprime e depois
+ * libera a String com dispose(). E os numeros dos relogios usam printInt e
+ * printChar, que nao criam Strings.
+ */
+class Hud {
+
+    // Colunas de texto da linha 0 (onde cada coisa e escrita).
+    field int headStartNumberCol;   // numero do relogio de vantagem
+    field int chaseNumberCol;       // numero do relogio de perseguicao
+
+    constructor Hud new() {
+        let headStartNumberCol = 10;
+        let chaseNumberCol = 27;
+        return this;
+    }
+
+    method void dispose() {
+        do Memory.deAlloc(this);
+        return;
+    }
+
+    /** Imprime a String na posicao atual do cursor e a libera. */
+    method void printText(String s) {
+        do Output.printString(s);
+        do s.dispose();
+        return;
+    }
+
+    /** Imprime a String centralizada na linha de texto "row" e a libera. */
+    method void printCentered(int row, String s) {
+        do Output.moveCursor(row, (64 - s.length()) / 2);
+        do printText(s);
+        return;
+    }
+
+    /** Tela inicial (so aparece na primeira vez). */
+    method void showStartScreen() {
+        do Screen.clearScreen();
+        do printCentered(6, "FANTASMA x PESSOA");
+        do printCentered(9, "Jogador 1 (Fantasma): setas, '.' para parar");
+        do printCentered(10, "Jogador 2 (Pessoa): W A S D, 'E' para parar");
+        do printCentered(11, "Esc: sair do jogo");
+        do printCentered(14, "Pressione qualquer tecla para comecar");
+        return;
+    }
+
+    /** Rotulos fixos da linha 0. Chamado uma vez por rodada. */
+    method void drawLabels() {
+        do Output.moveCursor(0, 0);
+        do printText("Vantagem:");
+        do Output.moveCursor(0, 14);
+        do printText("Perseguicao:");
+        do Output.moveCursor(0, 32);
+        do printText("J1:setas J2:WASD Esc:sair");
+        return;
+    }
+
+    /** Atualiza o numero do relogio de vantagem (head start). */
+    method void showHeadStart(int seconds) {
+        do printNumber(headStartNumberCol, seconds);
+        return;
+    }
+
+    /** Atualiza o numero do relogio de perseguicao. */
+    method void showChase(int seconds) {
+        do printNumber(chaseNumberCol, seconds);
+        return;
+    }
+
+    /**
+     * Escreve um numero na linha 0. Os dois espacos depois apagam digitos
+     * que sobraram (ex.: de "10" para "9" sobraria o "0").
+     */
+    method void printNumber(int col, int n) {
+        do Output.moveCursor(0, col);
+        do Output.printInt(n);
+        do Output.printChar(32);
+        do Output.printChar(32);
+        return;
+    }
+
+    /** Limpa uma caixa no centro da tela e escreve o resultado. */
+    method void showGameOver(boolean ghostWon) {
+        do Screen.setColor(false);
+        do Screen.drawRectangle(96, 96, 415, 159);   // apaga a caixa
+        do Screen.setColor(true);
+        do Screen.drawLine(96, 96, 415, 96);         // borda da caixa
+        do Screen.drawLine(96, 159, 415, 159);
+        do Screen.drawLine(96, 96, 96, 159);
+        do Screen.drawLine(415, 96, 415, 159);
+        if (ghostWon) {
+            do printCentered(10, "Game Over - Jogador 2 perdeu");
+            do printCentered(12, "(Fantasma venceu!)");
+        } else {
+            do printCentered(10, "Game Over - Jogador 1 perdeu");
+            do printCentered(12, "(Pessoa venceu!)");
+        }
+        return;
+    }
+
+    /** Mensagem final depois do Esc. */
+    method void showEnd() {
+        do Screen.clearScreen();
+        do printCentered(11, "Fim de jogo");
+        return;
+    }
+}

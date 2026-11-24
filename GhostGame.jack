@@ -1,0 +1,331 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/09/Square/SquareGame.jack
+//
+// ADAPTADO:
+//  - Dois jogadores no mesmo teclado: Fantasma (setas) contra Pessoa (WASD).
+//  - Movimento "travado": a tecla so escolhe a direcao; o boneco continua
+//    andando sozinho. No original a direcao voltava a 0 quando a tecla era
+//    solta, o que nao funciona com dois jogadores (o Hack so le uma tecla
+//    por vez).
+//  - Labirinto aleatorio (classe Maze), relogios e HUD (classe Hud).
+//  - Maquina de estados: tela inicial -> rodada (vantagem + perseguicao)
+//    -> Game Over -> nova rodada automatica. Esc sai de qualquer estado
+//    (antes era a tecla 'q').
+//  - Semente do Random vem da tela inicial (antes era 19 fixo, entao todo
+//    jogo seria igual).
+//  - Um unico laco principal ("batida do coracao"): cada volta e um tick;
+//    o tempo e o movimento sao contados em ticks.
+//  - Nada e alocado por rodada: Maze, Ghost e Person sao criados UMA VEZ
+//    no construtor e liberados so em dispose(). Cada rodada apenas chama
+//    maze.generate() e ghost.reset()/person.reset(). (Antes cada rodada
+//    fazia new + dispose; o heap se fragmentava e o Web IDE dava
+//    "Heap overflow" depois de ~8 rodadas. Ver ESTUDO.md.)
+
+/**
+ * GhostGame: controla o jogo inteiro.
+ * Le o teclado, move os dois jogadores, verifica a captura, conta o tempo
+ * e reinicia os objetos a cada rodada (sem criar objetos novos).
+ */
+class GhostGame {
+
+   // ---------- Valores de ajuste (o Jack nao tem constantes) ----------
+   // ATENCAO: os segundos sao APROXIMADOS. Sys.wait nao e preciso e a
+   // velocidade do emulador varia de computador para computador. Ajuste
+   // TICK_MS no Web IDE ate o relogio bater com um cronometro.
+   field int TICK_MS;                 // espera no fim de cada tick (ms)
+   field int TICKS_PER_SECOND;        // quantos ticks formam 1 segundo
+   field int MOVE_EVERY_TICKS;        // os bonecos andam 1 celula a cada N ticks
+   field int HEAD_START_SECONDS;      // vantagem: so a Pessoa anda
+   field int CHASE_SECONDS;           // perseguicao: os dois andam
+   field int GAMEOVER_PAUSE_SECONDS;  // pausa na tela de Game Over
+   field int BRAID_PERCENT;           // % de paredes extras abertas no labirinto
+   field int MIN_SPAWN_DISTANCE;      // distancia minima entre os spawns
+
+   // ---------- Objetos ----------
+   // Todos vivem o jogo todo: criados uma vez no construtor, liberados so
+   // em dispose(). Cada rodada so os REINICIA (generate / reset).
+   field Random random;
+   field Hud hud;
+   field Maze maze;
+   field Ghost ghost;
+   field Person person;
+
+   field int lastSecond;  // ultimo segundo mostrado no HUD
+
+   /** Cria o jogo, define os valores de ajuste e aloca TODOS os objetos. */
+   constructor GhostGame new() {
+      let TICK_MS = 50;
+      let TICKS_PER_SECOND = 20;
+      let MOVE_EVERY_TICKS = 3;
+      let HEAD_START_SECONDS = 3;
+      let CHASE_SECONDS = 20;
+      let GAMEOVER_PAUSE_SECONDS = 3;
+      let BRAID_PERCENT = 15;
+      let MIN_SPAWN_DISTANCE = 8;
+
+      let random = Random.new(19);    // a semente de verdade vem da tela inicial
+      let hud = Hud.new();
+      let maze = Maze.new(random);
+      let ghost = Ghost.new();
+      let person = Person.new();
+      return this;
+   }
+
+   /** Libera todos os objetos (so no fim do jogo). */
+   method void dispose() {
+      do maze.dispose();
+      do ghost.dispose();
+      do person.dispose();
+      do random.dispose();
+      do hud.dispose();
+      do Memory.deAlloc(this);
+      return;
+   }
+
+   /** Roda o jogo ate alguem apertar Esc. */
+   method void run() {
+      var boolean quit;
+      var int outcome;   // 0 = Esc, 1 = Fantasma pegou, 2 = tempo acabou
+
+      let quit = ~waitForStart();
+      while (~quit) {
+         do setupRound();
+         let outcome = playRound();
+         if (outcome = 0) {
+            let quit = true;
+         } else {
+            let quit = gameOverPause(outcome);
+         }
+      }
+      do hud.showEnd();
+      return;
+   }
+
+   /**
+    * Tela inicial. Enquanto ninguem aperta nada, um contador sobe a cada
+    * volta do laco. O valor dele quando a tecla e apertada vira a semente
+    * do Random (depende do tempo humano, entao cada partida e diferente).
+    * Se passar de 32767 o contador "da a volta" para negativo: tudo bem.
+    * Devolve false se a tecla foi Esc.
+    */
+   method boolean waitForStart() {
+      var char key;
+      var int counter;
+
+      do hud.showStartScreen();
+      let counter = 0;
+      let key = 0;
+      while (key = 0) {
+         let counter = counter + 1;
+         let key = Keyboard.keyPressed();
+      }
+      if (key = 140) {
+         return false;
+      }
+      do random.setSeed(counter);
+      // espera soltar a tecla, para ela nao virar um comando da rodada
+      while (~(key = 0)) {
+         let key = Keyboard.keyPressed();
+      }
+      return true;
+   }
+
+   /**
+    * Prepara uma rodada: labirinto novo, spawns novos, HUD.
+    * Nao aloca nada: reaproveita o mesmo Maze, Ghost e Person.
+    */
+   method void setupRound() {
+      do Screen.clearScreen();
+      do maze.generate(BRAID_PERCENT);
+      do maze.draw();
+      do spawnPlayers();
+      do hud.drawLabels();
+      let lastSecond = -1;      // forca o HUD a mostrar os relogios agora
+      do updateClocks(0);
+      return;
+   }
+
+   /**
+    * Fantasma numa celula livre qualquer. Pessoa numa celula livre com
+    * distancia (Manhattan) >= MIN_SPAWN_DISTANCE do Fantasma. No maximo 200
+    * tentativas; se nenhuma servir, usa a mais longe encontrada (assim o
+    * laco nunca fica infinito).
+    */
+   method void spawnPlayers() {
+      var int tries, distance, bestDistance, bestCol, bestRow;
+
+      do maze.pickFreeCell();
+      do ghost.reset(maze.getPickedCol(), maze.getPickedRow());
+
+      let tries = 0;
+      let bestDistance = -1;
+      while ((tries < 200) & (bestDistance < MIN_SPAWN_DISTANCE)) {
+         do maze.pickFreeCell();
+         let distance = Math.abs(maze.getPickedCol() - ghost.getCol())
+                      + Math.abs(maze.getPickedRow() - ghost.getRow());
+         if (distance > bestDistance) {
+            let bestDistance = distance;
+            let bestCol = maze.getPickedCol();
+            let bestRow = maze.getPickedRow();
+         }
+         let tries = tries + 1;
+      }
+      do person.reset(bestCol, bestRow);
+      return;
+   }
+
+   /**
+    * Uma rodada: vantagem (so a Pessoa) e depois perseguicao (os dois).
+    * Cada volta do laco e um tick. Devolve 0 (Esc), 1 (pego) ou 2 (tempo).
+    */
+   method int playRound() {
+      var char key;
+      var int ticks, headStartTicks, totalTicks;
+      var boolean inHeadStart;
+
+      let headStartTicks = HEAD_START_SECONDS * TICKS_PER_SECOND;
+      let totalTicks = headStartTicks + (CHASE_SECONDS * TICKS_PER_SECOND);
+      let ticks = 0;
+
+      while (ticks < totalTicks) {
+         let inHeadStart = ticks < headStartTicks;
+
+         // 1) teclado (uma tecla por vez no Hack)
+         let key = Keyboard.keyPressed();
+         if (key = 140) {
+            return 0;                                // Esc
+         }
+         do handlePersonKey(key);
+         if (~inHeadStart) {
+            do handleGhostKey(key);                  // na vantagem o Fantasma e ignorado
+         }
+
+         // 2) movimento + captura (so nos ticks de movimento)
+         if (isMoveTick(ticks)) {
+            if (moveAndCheckCatch(inHeadStart)) {
+               return 1;                             // Fantasma pegou a Pessoa
+            }
+         }
+
+         // 3) espera e relogio
+         do Sys.wait(TICK_MS);
+         let ticks = ticks + 1;
+         do updateClocks(ticks);
+      }
+      return 2;                                      // tempo acabou
+   }
+
+   /** Teclas do Jogador 2 (Pessoa): W A S D andam, E para. Maiuscula ou minuscula. */
+   method void handlePersonKey(char key) {
+      if ((key = 87) | (key = 119)) { do person.setDirection(1); }   // W: cima
+      if ((key = 83) | (key = 115)) { do person.setDirection(2); }   // S: baixo
+      if ((key = 65) | (key = 97))  { do person.setDirection(3); }   // A: esquerda
+      if ((key = 68) | (key = 100)) { do person.setDirection(4); }   // D: direita
+      if ((key = 69) | (key = 101)) { do person.stop(); }            // E: parar
+      return;
+   }
+
+   /** Teclas do Jogador 1 (Fantasma): setas andam, '.' para. */
+   method void handleGhostKey(char key) {
+      if (key = 131) { do ghost.setDirection(1); }   // seta cima
+      if (key = 133) { do ghost.setDirection(2); }   // seta baixo
+      if (key = 130) { do ghost.setDirection(3); }   // seta esquerda
+      if (key = 132) { do ghost.setDirection(4); }   // seta direita
+      if (key = 46)  { do ghost.stop(); }            // '.'
+      return;
+   }
+
+   /** Diz se neste tick os bonecos andam (um a cada MOVE_EVERY_TICKS ticks). */
+   method boolean isMoveTick(int ticks) {
+      return mod(ticks, MOVE_EVERY_TICKS) = 0;
+   }
+
+   /** Resto da divisao a / b (o Jack nao tem operador de resto). */
+   method int mod(int a, int b) {
+      return a - ((a / b) * b);
+   }
+
+   /**
+    * Guarda as posicoes antigas, anda um passo com cada boneco e verifica
+    * a captura. Na vantagem (inHeadStart) so a Pessoa anda.
+    */
+   method boolean moveAndCheckCatch(boolean inHeadStart) {
+      var int ghostOldCol, ghostOldRow, personOldCol, personOldRow;
+
+      let ghostOldCol = ghost.getCol();
+      let ghostOldRow = ghost.getRow();
+      let personOldCol = person.getCol();
+      let personOldRow = person.getRow();
+
+      do person.step(maze);
+      if (~inHeadStart) {
+         do ghost.step(maze);
+      }
+      return isCaught(ghostOldCol, ghostOldRow, personOldCol, personOldRow);
+   }
+
+   /**
+    * Captura acontece se:
+    *  - os dois estao na MESMA celula, OU
+    *  - eles TROCARAM de celula neste passo (o Fantasma foi para onde a
+    *    Pessoa estava e a Pessoa foi para onde o Fantasma estava). Sem este
+    *    caso, um atravessaria o outro sem ser pego.
+    */
+   method boolean isCaught(int ghostOldCol, int ghostOldRow,
+                           int personOldCol, int personOldRow) {
+      var boolean sameCell, swapped;
+
+      let sameCell = (ghost.getCol() = person.getCol())
+                   & (ghost.getRow() = person.getRow());
+      let swapped = ((ghost.getCol() = personOldCol) & (ghost.getRow() = personOldRow))
+                  & ((person.getCol() = ghostOldCol) & (person.getRow() = ghostOldRow));
+      return sameCell | swapped;
+   }
+
+   /**
+    * Converte ticks em segundos e atualiza os dois relogios do HUD, mas so
+    * quando o segundo muda (escrever na tela a cada tick seria lento).
+    */
+   method void updateClocks(int ticks) {
+      var int second, headStartLeft, chaseLeft;
+
+      let second = ticks / TICKS_PER_SECOND;   // segundos desde o inicio da rodada
+      if (second = lastSecond) {
+         return;
+      }
+      let lastSecond = second;
+
+      if (second < HEAD_START_SECONDS) {
+         let headStartLeft = HEAD_START_SECONDS - second;
+         let chaseLeft = CHASE_SECONDS;
+      } else {
+         let headStartLeft = 0;
+         let chaseLeft = CHASE_SECONDS - (second - HEAD_START_SECONDS);
+      }
+      do hud.showHeadStart(headStartLeft);
+      do hud.showChase(chaseLeft);
+      return;
+   }
+
+   /**
+    * Mostra o resultado e espera GAMEOVER_PAUSE_SECONDS sem precisar de
+    * tecla (reinicio automatico). Devolve true se apertaram Esc.
+    */
+   method boolean gameOverPause(int outcome) {
+      var int ticks, pauseTicks;
+
+      do hud.showGameOver(outcome = 1);   // 1 = Fantasma venceu
+      let pauseTicks = GAMEOVER_PAUSE_SECONDS * TICKS_PER_SECOND;
+      let ticks = 0;
+      while (ticks < pauseTicks) {
+         if (Keyboard.keyPressed() = 140) {
+            return true;
+         }
+         do Sys.wait(TICK_MS);
+         let ticks = ticks + 1;
+      }
+      return false;
+   }
+}

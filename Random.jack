@@ -1,0 +1,62 @@
+// Baseado em: https://github.com/xctom/Nand2Tetris/blob/master/projects/09/PigDice/Random.jack
+//
+// ADAPTADO:
+//  - BUG DO ORIGINAL: rand() fazia "seed = seed + 20251". Como 20251 e impar,
+//    o bit mais baixo do seed alternava 0,1,0,1,... E randRange(1) lia
+//    justamente esse bit (rand() & 1), entao todo labirinto viraria um
+//    zigue-zague regular.
+//  - CORRECAO: trocamos por um gerador congruente linear (LCG) de 16 bits:
+//    seed = (seed * 25173) + 13849, deixando a multiplicacao "estourar"
+//    (o Hack so guarda 16 bits). Num LCG os bits ALTOS sao os bons, entao
+//    as saidas usam a parte alta do numero (divisao), nunca os bits baixos.
+//  - randRange(range) agora divide 0..32767 em (range + 1) faixas iguais e
+//    devolve o numero da faixa: resultado sempre entre 0 e range.
+//  - Novo metodo setSeed(s): a semente vem da tela inicial (antes era 19 fixo).
+//  - Removidos getShift, addCallTime e calledTime (nao sao mais necessarios).
+//  - Verificado com um script Python que imita a aritmetica de 16 bits:
+//    em 1000 chamadas, randRange(1) deu cerca de 50% de uns (entre 480 e
+//    538, para 4 sementes diferentes) sem padrao visivel, e randRange(31)
+//    gerou todos os 32 valores.
+
+/**
+ * Gerador de numeros pseudo-aleatorios.
+ * O Jack nao tem funcao aleatoria, entao calculamos uma sequencia de
+ * numeros que "parece" aleatoria a partir de uma semente (seed).
+ */
+class Random {
+    field int seed; // estado atual do gerador
+
+    /** Cria o gerador com uma semente inicial. */
+    constructor Random new(int seedIn) {
+        let seed = seedIn;
+        return this;
+    }
+
+    /** Troca a semente (usada com o contador da tela inicial). */
+    method void setSeed(int s) {
+        let seed = s;
+        return;
+    }
+
+    /** Devolve um numero entre 0 e 32767. */
+    method int rand() {
+        // A multiplicacao passa de 16 bits e "da a volta": isso e proposital.
+        let seed = (seed * 25173) + 13849;
+        // & 32767 zera o bit de sinal, entao o resultado nunca e negativo.
+        return seed & 32767;
+    }
+
+    /** Devolve um numero entre 0 e range (inclusive). */
+    method int randRange(int range) {
+        var int bucket;
+        // Tamanho de cada faixa; o +1 garante que o resultado nunca passa de range.
+        let bucket = (32767 / (range + 1)) + 1;
+        return rand() / bucket;
+    }
+
+    /** Libera a memoria do objeto. */
+    method void dispose() {
+        do Memory.deAlloc(this);
+        return;
+    }
+}
