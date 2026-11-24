@@ -36,6 +36,8 @@ Os arquivos `.vm` **não ficam no repositório**: eles são gerados ao compilar 
 
 ## Como rodar no nand2tetris
 
+> ⚠️ **Importante: rode no modo _fast_ (velocidade máxima).** Em qualquer velocidade mais baixa o jogo fica lento demais para jogar e os relógios não batem.
+
 O jogo precisa de duas etapas: **compilar** os `.jack` (gerando `.vm`) e **executar** os `.vm` no **VM Emulator**.
 
 ### Opção A — Web IDE (no navegador)
@@ -45,7 +47,7 @@ O jogo precisa de duas etapas: **compilar** os `.jack` (gerando `.vm`) e **execu
 3. Vá para a ferramenta **Jack Compiler**, abra a pasta com os 7 arquivos `.jack` e compile. Devem sair **0 erros** e 7 arquivos `.vm`.
 4. Vá para o **VM Emulator** e carregue a pasta compilada (todos os `.vm` juntos — o programa começa em `Main.main`).
 5. Clique na tela do emulador para ela receber o teclado e aperte **Run** (▶).
-6. Aumente a velocidade de execução ao máximo; em velocidade baixa o jogo fica muito lento.
+6. **Coloque o emulador no modo _fast_** (velocidade máxima). Sem isso o jogo fica lento demais.
 
 ### Opção B — Ferramentas de desktop (nand2tetris Software Suite)
 
@@ -54,7 +56,7 @@ O jogo precisa de duas etapas: **compilar** os `.jack` (gerando `.vm`) e **execu
    - Windows: `tools\JackCompiler.bat "caminho\da\pasta"`
    - Linux/macOS: `tools/JackCompiler.sh caminho/da/pasta`
 3. Abra o VM Emulator (`tools\VMEmulator.bat` ou `tools/VMEmulator.sh`) e use **File → Load Program** para carregar a **pasta** (não um arquivo só).
-4. Em **Animate**, escolha **No animation** e coloque a velocidade no máximo.
+4. **Coloque no modo _fast_:** em **Animate**, escolha **No animation** e arraste a velocidade para o máximo (*Fast*).
 5. Aperte **Run** (▶) e clique na área da tela/teclado do emulador para os comandos chegarem ao jogo.
 
 ## Observações
